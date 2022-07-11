@@ -729,7 +729,7 @@ class Linkedin(object):
         return self.search_people(connection_of=urn_id, network_depth="F")
 
     def get_company_updates(
-        self, public_id=None, urn_id=None, max_results=None, results=[]
+        self, public_id=None, urn_id=None, max_results=None
     ):
         """Fetch company updates (news activity) for a given LinkedIn company.
 
@@ -741,37 +741,32 @@ class Linkedin(object):
         :return: List of company update objects
         :rtype: list
         """
+        results = []
+
         params = {
             "companyUniversalName": {public_id or urn_id},
             "q": "companyFeedByUniversalName",
             "moduleKey": "member-share",
             "count": Linkedin._MAX_UPDATE_COUNT,
-            "start": len(results),
         }
 
-        res = self._fetch(f"/feed/updates", params=params)
+        while True:
+            params["start"] = len(results)
+            res = self._fetch(f"/feed/updates", params=params)
+            data = res.json()
+            if (
+                len(data["elements"]) == 0
+                or (max_results is not None and len(results) >= max_results)
+                or (
+                    max_results is not None
+                    and len(results) / max_results >= Linkedin._MAX_REPEATED_REQUESTS
+                )
+            ): 
+                break
+            results.extend(data["elements"])
+            self.logger.debug(f"results grew: {len(results)}")
 
-        data = res.json()
-
-        if (
-            len(data["elements"]) == 0
-            or (max_results is not None and len(results) >= max_results)
-            or (
-                max_results is not None
-                and len(results) / max_results >= Linkedin._MAX_REPEATED_REQUESTS
-            )
-        ):
-            return results
-
-        results.extend(data["elements"])
-        self.logger.debug(f"results grew: {len(results)}")
-
-        return self.get_company_updates(
-            public_id=public_id,
-            urn_id=urn_id,
-            results=results,
-            max_results=max_results,
-        )
+        return results
 
     def get_profile_updates(
         self, public_id=None, urn_id=None, max_results=None, results=[]
